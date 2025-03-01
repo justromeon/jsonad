@@ -38,7 +38,7 @@ isControl :: Char -> Bool
 isControl c = c `elem` ['\0' .. '\31']
 
 showJSONChar :: Char -> String
-showJSONChar c = case c of
+showJSONChar = \case
   '\'' -> "'"
   '\"' -> "\\\""
   '\\' -> "\\\\"
@@ -48,8 +48,6 @@ showJSONChar c = case c of
   '\n' -> "\\n"
   '\r' -> "\\r"
   '\t' -> "\\t"
-  _ | isControl c -> "\\u" ++ showJSONNonASCIIChar c
-  _ -> [c]
-  where
-    showJSONNonASCIIChar x =
-      let a = "0000" ++ showHex (ord x) "" in drop (length a - 4) a
+  c | isControl c -> "\\u" ++ drop (length paddedHex - 4) paddedHex
+    where paddedHex = "0000" ++ showHex (ord c) ""
+  c -> [c]
