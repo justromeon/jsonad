@@ -1,9 +1,10 @@
-{-# LANGUAGE DeriveGeneric, LambdaCase #-}
-{-# LANGUAGE InstanceSigs #-}
+{-# LANGUAGE DeriveGeneric, TupleSections, LambdaCase #-}
 module JSONParser where
 
-import Data.Char (ord)
+import Control.Applicative (Alternative(..))
+import Data.Char (ord, isDigit, digitToInt)
 import Data.List (intercalate)
+import Data.Functor (($>))
 import GHC.Generics (Generic)
 import Numeric (showHex)
 
@@ -16,7 +17,6 @@ data JValue = JNull
             deriving (Eq, Generic)
 
 instance Show JValue where
-    show :: JValue -> String
     show = \case
       JNull          -> "null"
       JBool True     -> "true"
@@ -51,3 +51,46 @@ showJSONChar = \case
   c | isControl c -> "\\u" ++ drop (length paddedHex - 4) paddedHex
     where paddedHex = "0000" ++ showHex (ord c) ""
   c -> [c]
+
+--Parser declaration and typeclass instances
+newtype Parser i o = Parser { runParser :: i -> Maybe (i,o) }
+
+instance Functor (Parser i) where
+  fmap f parser = Parser $ \inp -> case runParser parser inp of 
+      Nothing -> Nothing
+      Just (xs, x) -> Just (xs, f x)
+
+instance Applicative (Parser i) where
+  pure x = Parser $ pure . (, x)
+  pf <*> po = Parser $ \inp -> case runParser pf inp of
+    Nothing      -> Nothing
+    Just (xs, f) -> runParser (fmap f po) xs
+
+instance Alternative (Parser i) where
+  empty = Parser $ const Nothing
+  px <|> py = Parser $ \inp -> case runParser px inp of
+    Nothing -> runParser py inp
+    success -> success
+
+--Parsers
+satisfy :: (a -> Bool) -> Parser [a] a
+satisfy p = Parser $ \case
+    (x:xs) | p x -> Just (xs,x)
+    _            -> Nothing
+
+char :: Char -> Parser String Char
+char c = satisfy (== c)
+
+string :: String -> Parser String String
+string ""     = pure ""
+string (c:cs) = (:) <$> char c <*> string cs
+
+digit :: Parser String Int
+digit = digitToInt <$> satisfy isDigit
+
+jNull :: Parser String JValue
+jNull = string "null" $> JNull
+
+jBool :: Parser String JValue
+jBool = string "true"  $> JBool True
+    <|> string "false" $> JBool False
