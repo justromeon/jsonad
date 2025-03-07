@@ -195,7 +195,49 @@ jIntFracExp = do
   e  <- jExp
   case jv of
     JNumber i f _ -> pure (JNumber i f e)
-    _            -> pure jv
+    _             -> pure jv
 
 jNumber :: Parser String JValue
 jNumber = jIntFracExp <|> jIntFrac <|> jIntExp <|> jInt
+
+surroundedBy :: Parser String a -> Parser String b -> Parser String a
+surroundedBy content wrapper = wrapper *> content <* wrapper
+
+separatedBy :: Parser i v -> Parser i s -> Parser i [v]
+separatedBy value sep = (:) <$> value <*> many (sep *> value)
+
+spaces :: Parser String String
+spaces = many (char ' ' <|> char '\n' <|> char '\r' <|> char '\t')
+
+jArray :: Parser String JValue
+jArray = JArray <$>
+  (char '['
+  *> (jValue `separatedBy` char ',' `surroundedBy` spaces)
+  <* char ']')
+
+jObject :: Parser String JValue
+jObject = JObject <$>
+  (char '{' *> pair `separatedBy` char ',' `surroundedBy` spaces <* char '}')
+  where
+    pair = do
+      s <- jString `surroundedBy` spaces
+      _ <- char ':'
+      jv <- jValue
+      case s of
+        JString x -> pure (x, jv)
+        _         -> pure ("", JNull)
+
+jValue :: Parser String JValue
+jValue = jValue' `surroundedBy` spaces
+  where
+    jValue' = jNull
+          <|> jBool
+          <|> jString
+          <|> jNumber
+          <|> jArray
+          <|> jObject
+
+parseJSON :: String -> Maybe JValue
+parseJSON s = case runParser jValue s of
+  Just ("", json) -> Just json
+  _               -> Nothing 
