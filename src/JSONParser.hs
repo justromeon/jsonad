@@ -178,7 +178,7 @@ jFrac = char '.' *> digits
 
 jExp :: Parser String Integer
 jExp = (char 'e' <|> char 'E')
-    *> (signInt <$> optional (char '-') <*> jInt')
+    *> (signInt <$> optional (char '+' <|> char '-') <*> jInt')
 
 jInt :: Parser String JValue
 jInt = JNumber <$> jInt' <*> pure [] <*> pure 0
