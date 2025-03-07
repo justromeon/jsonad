@@ -12,4 +12,4 @@ main = do
       case parseJSON contents of
         Just value -> print value
         Nothing    -> putStrLn "Invalid JSON input"
-    _ -> putStrLn "Usage: json-parser <file.json>"
+    _ -> putStrLn "Usage: cabal run jsonad -- <file.json>"
