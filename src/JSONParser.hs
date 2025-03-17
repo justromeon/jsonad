@@ -1,14 +1,16 @@
 {-# LANGUAGE DeriveGeneric, TupleSections, LambdaCase #-}
+{-# LANGUAGE InstanceSigs #-}
 module JSONParser where
 
 import Control.Applicative (Alternative(..), optional)
 import Control.Monad (replicateM)
 import Data.Bits (shiftL)
-import Data.Char (ord, isDigit, digitToInt, chr, isHexDigit)
+import Data.Char (ord, isDigit, digitToInt, chr, isHexDigit, isSpace)
 import Data.List (intercalate)
 import Data.Functor (($>))
 import GHC.Generics (Generic)
 import Numeric (showHex)
+import Test.QuickCheck hiding (Positive, Negative)
 
 data JValue = JNull
             | JBool Bool
@@ -241,3 +243,111 @@ parseJSON :: String -> Maybe JValue
 parseJSON s = case runParser jValue s of
   Just ("", json) -> Just json
   _               -> Nothing 
+
+--QuickCheck Generators for testing
+
+--Scalar Generators
+jNullGen :: Gen JValue
+jNullGen = pure JNull
+
+jBoolGen :: Gen JValue
+jBoolGen = JBool <$> arbitrary
+
+jNumberGen :: Gen JValue
+jNumberGen = JNumber <$> arbitrary <*> listOf (choose (0,9)) <*> arbitrary
+
+jsonStringGen :: Gen String
+jsonStringGen =
+  concat <$> listOf (oneof [ vectorOf 4 arbitraryUnicodeChar
+                           , escapedUnicodeChar ])
+  where
+    escapedUnicodeChar = ("\\u" ++) <$> vectorOf 4 (elements hexDigitLetters)
+    hexDigitLetters = ['0'..'9'] ++ ['a'..'f'] ++ ['A'..'F']
+
+jStringGen :: Gen JValue
+jStringGen = JString <$> jsonStringGen
+
+--Composite Generators
+jArrayGen :: Int -> Gen JValue
+jArrayGen = fmap JArray . scale (`div` 2) . listOf . jValueGen . (`div` 2)
+
+jObjectGen :: Int -> Gen JValue
+jObjectGen = fmap JObject . scale (`div` 2) . listOf . objKV . (`div` 2)
+  where
+    objKV n = (,) <$> jsonStringGen <*> jValueGen n
+
+jValueGen :: Int -> Gen JValue
+jValueGen n
+    | n < 5     = frequency [(4, oneof scalarGens), (1, oneof $ compositeGens n)]
+    | otherwise = frequency [(1, oneof scalarGens), (4, oneof $ compositeGens n)]
+  where
+    scalarGens      = [jNullGen, jBoolGen, jNumberGen, jStringGen]
+    compositeGens m = [jArrayGen m, jObjectGen m]
+
+jsonWhitespaceGen :: Gen String
+jsonWhitespaceGen =
+  scale (round . sqrt . (fromIntegral :: Int -> Double))
+  . listOf
+  . elements
+  $ [' ' , '\n' , '\r' , '\t']
+
+stringify :: JValue -> Gen String
+stringify = pad . go
+  where
+    surround l r j = l ++ j ++ r
+    pad gen = surround <$> jsonWhitespaceGen <*> jsonWhitespaceGen <*> gen
+    commaSeparated = pad . pure . intercalate ","
+
+    go value = case value of
+      JArray es ->
+        mapM (pad . stringify) es
+          >>= fmap (surround "[" "]") . commaSeparated
+      JObject kvs ->
+        mapM stringifyKV kvs >>= fmap (surround "{" "}") . commaSeparated
+      _           -> return $ show value
+
+    stringifyKV (k, v) =
+      surround <$> pad (pure $ showJSONString k) <*> stringify v <*> pure ":"
+
+instance Arbitrary JValue where
+  arbitrary :: Gen JValue
+  arbitrary = sized jValueGen
+
+  shrink :: JValue -> [JValue]
+  shrink = genericShrink
+
+--QuickCheck properties
+prop_genParseJString :: Property
+prop_genParseJString =
+  forAllShrink jStringGen shrink $ \js ->
+    case runParser jString (show js) of
+      Nothing    -> False
+      Just (_,o) -> o == js
+
+prop_genParseJNumber :: Property
+prop_genParseJNumber =
+  forAllShrink jNumberGen shrink $ \jn ->
+    case runParser jNumber (show jn) of
+      Nothing    -> False
+      Just (_,o) -> o == jn
+
+prop_genParseJArray :: Property
+prop_genParseJArray =
+  forAllShrink (sized jArrayGen) shrink $ \ja -> do
+    jas <- dropWhile isSpace <$> stringify ja
+    return . counterexample (show jas) $ case runParser jArray jas of
+      Nothing    -> False
+      Just (_,o) -> o == ja
+
+prop_genParseJObject :: Property
+prop_genParseJObject =
+  forAllShrink (sized jObjectGen) shrink $ \jo -> do
+    jos <- dropWhile isSpace <$> stringify jo
+    return . counterexample (show jos) $ case runParser jObject jos of
+      Nothing    -> False
+      Just (_,o) -> o == jo
+
+prop_genParseJSON :: Property
+prop_genParseJSON = forAllShrink (sized jValueGen) shrink $ \value -> do
+  json <- stringify value
+  return . counterexample (show json) . (== Just value) . parseJSON $ json
