@@ -213,21 +213,23 @@ spaces = many (char ' ' <|> char '\n' <|> char '\r' <|> char '\t')
 
 jArray :: Parser String JValue
 jArray = JArray <$>
-  (char '['
-  *> (jValue `separatedBy` char ',' `surroundedBy` spaces)
-  <* char ']')
+  (char '[' *> spaces
+  *> many (jValue <* spaces <* optional (char ',' *> spaces))
+  <* spaces <* char ']')
 
 jObject :: Parser String JValue
 jObject = JObject <$>
-  (char '{' *> pair `separatedBy` char ',' `surroundedBy` spaces <* char '}')
+  (char '{' *> spaces
+  *> many (pair <* spaces <* optional (char ',' *> spaces))
+  <* spaces <* char '}')
   where
     pair = do
       s <- jString `surroundedBy` spaces
-      _ <- char ':'
+      _ <- char ':' *> spaces
       jv <- jValue
       case s of
-        JString x -> pure (x, jv)
-        _         -> pure ("", JNull)
+        JString str -> pure (str, jv)
+        _           -> pure ("", JNull)
 
 jValue :: Parser String JValue
 jValue = jValue' `surroundedBy` spaces
@@ -242,7 +244,7 @@ jValue = jValue' `surroundedBy` spaces
 parseJSON :: String -> Maybe JValue
 parseJSON s = case runParser jValue s of
   Just ("", json) -> Just json
-  _               -> Nothing 
+  _               -> Nothing
 
 --QuickCheck Generators for testing
 
