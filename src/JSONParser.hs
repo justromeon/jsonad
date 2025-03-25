@@ -214,13 +214,13 @@ spaces = many (char ' ' <|> char '\n' <|> char '\r' <|> char '\t')
 jArray :: Parser String JValue
 jArray = JArray <$>
   (char '[' *> spaces
-  *> many (jValue <* spaces <* optional (char ',' *> spaces))
+  *> many (jValue <* optional (char ','))
   <* spaces <* char ']')
 
 jObject :: Parser String JValue
 jObject = JObject <$>
   (char '{' *> spaces
-  *> many (pair <* spaces <* optional (char ',' *> spaces))
+  *> many (pair <* optional (char ','))
   <* spaces <* char '}')
   where
     pair = do
