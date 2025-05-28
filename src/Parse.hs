@@ -3,6 +3,7 @@
 module Parse where
 
 import Control.Applicative
+import Data.Char (digitToInt, isDigit)
 
 newtype Parser a = Parser { runP :: String -> Maybe (String, a) }
 
@@ -37,10 +38,16 @@ instance Alternative Parser where
         Just (xs,x) -> Just (xs,x)
 
 --Parsing primitives
+satisfy :: (Char -> Bool) -> Parser Char
+satisfy p = Parser $ \case
+    x:xs | p x -> Just (xs,x)
+    _          -> Nothing
+
 char :: Char -> Parser Char
-char c = Parser $ \case
-    x:xs | x == c -> Just (xs,x)
-    _             -> Nothing
+char c = satisfy (== c)
 
 string :: String -> Parser String
 string = traverse char
+
+digit :: Parser Int
+digit = digitToInt <$> satisfy isDigit
