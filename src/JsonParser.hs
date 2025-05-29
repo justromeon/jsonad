@@ -6,7 +6,7 @@ import Parse
 
 data JValue = JNull
             | JBool Bool
-            | JNumber {int :: Integer, frac :: [Int], exponent :: Integer}
+            | JNumber Double
             | JString String
             | JArray [JValue]
             | JObject [(String,JValue)]

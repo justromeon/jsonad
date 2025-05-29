@@ -3,7 +3,7 @@
 module Parse where
 
 import Control.Applicative
-import Data.Char (digitToInt, isDigit)
+import Data.Char (isDigit)
 
 newtype Parser a = Parser { runP :: String -> Maybe (String, a) }
 
@@ -49,5 +49,17 @@ char c = satisfy (== c)
 string :: String -> Parser String
 string = traverse char
 
-digit :: Parser Int
-digit = digitToInt <$> satisfy isDigit
+oneOf :: String -> Parser Char
+oneOf xs = satisfy (`elem` xs)
+ 
+digit :: Parser Char
+digit = satisfy isDigit
+
+digits :: Parser String
+digits = many digit
+
+digits1 :: Parser String
+digits1 = some digit
+
+nonZeroDig :: Parser Char
+nonZeroDig = satisfy (\d -> isDigit d && d /= '0')
